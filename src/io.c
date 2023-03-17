@@ -462,6 +462,129 @@ cleanup:
     return ret;
 }
 
+int
+nc_read_msg_io_no_schema(struct nc_session *session, int io_timeout, xmlDocPtr *doc, int passing_io_lock)
+{
+    int ret = 1, r, io_locked = passing_io_lock;
+    char *data = NULL, *chunk;
+    uint64_t chunk_len, len = 0;
+    /* use timeout in milliseconds instead seconds */
+    uint32_t inact_timeout = NC_READ_INACT_TIMEOUT * 1000;
+    struct timespec ts_act_timeout;
+
+    assert(session && doc);
+
+    if ((session->status != NC_STATUS_RUNNING) && (session->status != NC_STATUS_STARTING)) {
+        ERR(session, "Invalid session to read from.");
+        ret = -1;
+        goto cleanup;
+    }
+
+    nc_gettimespec_mono_add(&ts_act_timeout, NC_READ_ACT_TIMEOUT * 1000);
+
+    if (!io_locked) {
+        /* SESSION IO LOCK */
+        ret = nc_session_io_lock(session, io_timeout, __func__);
+        if (ret < 1) {
+            goto cleanup;
+        }
+        io_locked = 1;
+    }
+
+    /* read the message */
+    switch (session->version) {
+    case NC_VERSION_10:
+        r = nc_read_until(session, NC_VERSION_10_ENDTAG, 0, inact_timeout, &ts_act_timeout, &data);
+        if (r == -1) {
+            ret = r;
+            goto cleanup;
+        }
+
+        /* cut off the end tag */
+        data[r - NC_VERSION_10_ENDTAG_LEN] = '\0';
+        break;
+    case NC_VERSION_11:
+        while (1) {
+            r = nc_read_until(session, "\n#", 0, inact_timeout, &ts_act_timeout, NULL);
+            if (r == -1) {
+                ret = r;
+                goto cleanup;
+            }
+            r = nc_read_until(session, "\n", 0, inact_timeout, &ts_act_timeout, &chunk);
+            if (r == -1) {
+                ret = r;
+                goto cleanup;
+            }
+
+            if (!strcmp(chunk, "#\n")) {
+                /* end of chunked framing message */
+                free(chunk);
+                if (!data) {
+                    ERR(session, "Invalid frame chunk delimiters.");
+                    ret = -2;
+                    goto cleanup;
+                }
+                break;
+            }
+
+            /* convert string to the size of the following chunk */
+            chunk_len = strtoul(chunk, (char **)NULL, 10);
+            free(chunk);
+            if (!chunk_len) {
+                ERR(session, "Invalid frame chunk size detected, fatal error.");
+                ret = -2;
+                goto cleanup;
+            }
+
+            /* now we have size of next chunk, so read the chunk */
+            r = nc_read_chunk(session, chunk_len, inact_timeout, &ts_act_timeout, &chunk);
+            if (r == -1) {
+                ret = r;
+                goto cleanup;
+            }
+
+            /* realloc message buffer, remember to count terminating null byte */
+            data = nc_realloc(data, len + chunk_len + 1);
+            if (!data) {
+                ERRMEM;
+                ret = -1;
+                goto cleanup;
+            }
+            memcpy(data + len, chunk, chunk_len);
+            len += chunk_len;
+            data[len] = '\0';
+            free(chunk);
+        }
+
+        break;
+    }
+
+    /* SESSION IO UNLOCK */
+    assert(io_locked);
+    nc_session_io_unlock(session, __func__);
+    io_locked = 0;
+
+    DBG(session, "Received message:\n%s\n", data);
+
+    xmlIndentTreeOutput = 1;
+    xmlKeepBlanksDefault(0);
+
+    *doc = xmlReadMemory(data, strlen(data), "rpc-reply.xml", NULL, 0);
+    if (*doc == NULL) {
+        ERR(session, "Failed to parse document.");
+    }
+
+    data = NULL;
+
+cleanup:
+    if (io_locked) {
+        /* SESSION IO UNLOCK */
+        nc_session_io_unlock(session, __func__);
+    }
+    free(data);
+    return ret;
+}
+
 /* return -1 means either poll error or that session was invalidated (socket error), EINTR is handled inside */
 static int
 nc_read_poll(struct nc_session *session, int io_timeout)
@@ -593,6 +716,37 @@ nc_read_msg_poll_io(struct nc_session *session, int io_timeout, struct ly_in **m
 
     /* SESSION IO LOCK passed down */
     return nc_read_msg_io(session, io_timeout, msg, 1);
+}
+
+int
+nc_read_msg_poll_io_no_schema(struct nc_session *session, int io_timeout, xmlDocPtr *doc)
+{
+    int ret;
+
+    assert(session && doc);
+
+    if ((session->status != NC_STATUS_RUNNING) && (session->status != NC_STATUS_STARTING)) {
+        ERR(session, "Invalid session to read from.");
+        return -1;
+    }
+
+    /* SESSION IO LOCK */
+    ret = nc_session_io_lock(session, io_timeout, __func__);
+    if (ret < 1) {
+        return ret;
+    }
+
+    ret = nc_read_poll(session, io_timeout);
+    if (ret < 1) {
+        /* timed out or error */
+
+        /* SESSION IO UNLOCK */
+        nc_session_io_unlock(session, __func__);
+        return ret;
+    }
+
+    /* SESSION IO LOCK passed down */
+    return nc_read_msg_io_no_schema(session, io_timeout, doc, 1);
 }
 
 /* does not really log, only fatal errors */
@@ -1158,6 +1312,58 @@ nc_write_msg_io(struct nc_session *session, int io_timeout, int type, ...)
 
 cleanup:
     va_end(ap);
+    nc_session_io_unlock(session, __func__);
+    return ret;
+}
+
+/* return NC_MSG_ERROR can change session status, acquires IO lock as needed */
+NC_MSG_TYPE
+nc_write_msg_io_no_schema(struct nc_session *session, int io_timeout, xmlDocPtr doc)
+{
+    xmlChar *buf;
+    struct wclb_arg arg;
+    int size, ret;
+
+    assert(session);
+
+    if ((session->status != NC_STATUS_RUNNING) && (session->status != NC_STATUS_STARTING)) {
+        ERR(session, "Invalid session to write to.");
+        return NC_MSG_ERROR;
+    }
+
+    arg.session = session;
+    arg.len = 0;
+
+    /* SESSION IO LOCK */
+    ret = nc_session_io_lock(session, io_timeout, __func__);
+    if (ret < 0) {
+        return NC_MSG_ERROR;
+    } else if (!ret) {
+        return NC_MSG_WOULDBLOCK;
+    }
+
+    /* Dump XML document to a buffer */
+    xmlDocDumpFormatMemory(doc, &buf, &size, 0);
+
+    /* Write XML document string */
+    nc_write_clb((void *)&arg, buf, size, 0);
+
+    /* flush message */
+    nc_write_clb((void *)&arg, NULL, 0, 0);
+
+    /* Free up the memory allocated in the call to xmlDocDumpFormatMemory */
+    xmlFree(buf);
+
+    if ((session->status != NC_STATUS_RUNNING) && (session->status != NC_STATUS_STARTING)) {
+        /* error was already written */
+        ret = NC_MSG_ERROR;
+        goto cleanup;
+    } else {
+        /* specific message successfully sent */
+        ret = NC_MSG_RPC;
+    }
+
+cleanup:
     nc_session_io_unlock(session, __func__);
     return ret;
 }

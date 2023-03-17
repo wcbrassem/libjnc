@@ -33,6 +33,7 @@
 #include "libnetconf.h"
 #include "session.h"
 #include "session_server.h"
+#include "macosx_pthread.h"
 
 #ifdef NC_ENABLED_SSH
 
@@ -280,7 +281,7 @@ nc_session_rpc_lock(struct nc_session *session, int timeout, const char *func)
         nc_gettimespec_real_add(&ts_timeout, timeout);
 
         /* LOCK */
-        ret = pthread_mutex_timedlock(&session->opts.server.rpc_lock, &ts_timeout);
+        ret = macos_pthread_mutex_timedlock(&session->opts.server.rpc_lock, &ts_timeout);
         if (!ret) {
             while (session->opts.server.rpc_inuse) {
                 ret = pthread_cond_timedwait(&session->opts.server.rpc_cond, &session->opts.server.rpc_lock, &ts_timeout);
@@ -356,7 +357,7 @@ nc_session_rpc_unlock(struct nc_session *session, int timeout, const char *func)
         nc_gettimespec_real_add(&ts_timeout, timeout);
 
         /* LOCK */
-        ret = pthread_mutex_timedlock(&session->opts.server.rpc_lock, &ts_timeout);
+        ret = macos_pthread_mutex_timedlock(&session->opts.server.rpc_lock, &ts_timeout);
     } else if (!timeout) {
         /* LOCK */
         ret = pthread_mutex_trylock(&session->opts.server.rpc_lock);
@@ -398,7 +399,7 @@ nc_session_io_lock(struct nc_session *session, int timeout, const char *func)
     if (timeout > 0) {
         nc_gettimespec_real_add(&ts_timeout, timeout);
 
-        ret = pthread_mutex_timedlock(session->io_lock, &ts_timeout);
+        ret = macos_pthread_mutex_timedlock(session->io_lock, &ts_timeout);
     } else if (!timeout) {
         ret = pthread_mutex_trylock(session->io_lock);
     } else { /* timeout == -1 */
@@ -449,7 +450,7 @@ nc_session_client_msgs_lock(struct nc_session *session, int *timeout, const char
 
         nc_gettimespec_real_add(&ts_timeout, *timeout);
 
-        ret = pthread_mutex_timedlock(&session->opts.client.msgs_lock, &ts_timeout);
+        ret = macos_pthread_mutex_timedlock(&session->opts.client.msgs_lock, &ts_timeout);
         if (!ret) {
             /* update timeout based on what was elapsed */
             diff_msec = nc_difftimespec_real_cur(&ts_start);
@@ -647,6 +648,12 @@ nc_send_msg_io(struct nc_session *session, int io_timeout, struct lyd_node *op)
     }
 
     return nc_write_msg_io(session, io_timeout, NC_MSG_RPC, op, NULL);
+}
+
+NC_MSG_TYPE
+nc_send_msg_io_no_schema(struct nc_session *session, int io_timeout, xmlDocPtr doc)
+{
+    return nc_write_msg_io_no_schema(session, io_timeout, doc);
 }
 
 /**

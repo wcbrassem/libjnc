@@ -107,6 +107,7 @@ set(CALL_HOME_BACKOFF_WAIT 2 CACHE STRING "Number of seconds to wait between Cal
 set(libsrc
     src/io.c
     src/log.c
+    src/macosx_pthread.c
     src/messages_client.c
     src/messages_server.c
     src/session.c
@@ -131,6 +132,7 @@ set(headers
     src/log.h
     src/netconf.h
     src/session.h
+    src/macosx_pthread.h
     src/messages_client.h
     src/messages_server.h
     src/session_client.h
@@ -144,6 +146,7 @@ set(doxy_files
     src/log.h
     src/netconf.h
     src/session.h
+    src/macosx_pthread.h
     src/messages_client.h
     src/messages_server.h
     src/session_client.h
@@ -293,6 +296,11 @@ endif()
 find_package(LibYANG ${LIBYANG_DEP_SOVERSION} REQUIRED)
 target_link_libraries(netconf2 ${LIBYANG_LIBRARIES})
 include_directories(${LIBYANG_INCLUDE_DIRS})
+
+# dependencies - libxml2
+find_package(LibXML REQUIRED)
+target_link_libraries(netconf2 ${LIBXML_LIBRARIES})
+include_directories(${LIBXML_INCLUDE_DIRS})
 
 # header file compatibility - shadow.h and crypt.h
 check_include_file("shadow.h" HAVE_SHADOW)

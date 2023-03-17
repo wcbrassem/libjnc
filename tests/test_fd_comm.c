@@ -33,6 +33,7 @@
 #include <session_client.h>
 #include <session_p.h>
 #include <session_server.h>
+#include <macosx_pthread.h>
 #include "tests/config.h"
 
 struct nc_session *server_session;

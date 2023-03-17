@@ -41,6 +41,9 @@
 
 #include <libyang/libyang.h>
 
+/* Include from libxml2 */
+#include <libxml/tree.h>
+
 #include "compat.h"
 #include "libnetconf.h"
 #include "messages_client.h"
@@ -1348,6 +1351,7 @@ nc_ctx_check_and_fill(struct nc_session *session)
 
     /* set support for schema-mount, if possible */
     if (nc_ctx_schema_mount(session, nmda_support, xpath_support)) {
+    // if (nc_ctx_schema_mount(session, nmda_support, xpath_support=1)) {
         goto cleanup;
     }
 
@@ -1926,6 +1930,19 @@ nc_client_destroy(void)
     nc_destroy();
 }
 
+API void
+nc_client_close(struct nc_session *session)
+{
+    if (!session)
+        return;
+
+    if (session->status == NC_STATUS_RUNNING)
+        session->status = NC_STATUS_COMPLETED;
+
+    nc_session_free(session, NULL);
+    nc_client_destroy();
+}
+
 static NC_MSG_TYPE
 recv_reply_check_msgid(struct nc_session *session, const struct lyd_node *envp, uint64_t msgid)
 {
@@ -1991,10 +2008,12 @@ get_msg_type(struct nc_session *session, struct ly_in *msg)
                 str = strstr(str, end);
             } else if (!strncmp(str, "rpc-reply", 9)) {
                 return NC_MSG_REPLY;
+            } else if (!strncmp(str, "nc:rpc-reply", 12)) {
+                return NC_MSG_REPLY;
             } else if (!strncmp(str, "notification", 12)) {
                 return NC_MSG_NOTIF;
             } else {
-                ERR(session, "Unknown xml element '%.10s'.", str);
+                ERR(session, "Unknown xml element '%.60s'.", str);
                 return NC_MSG_ERROR;
             }
             if (!str) {
@@ -2116,6 +2135,62 @@ cleanup:
     return ret;
 }
 
+/**
+ * @brief Function to receive either replies without a schema
+ *
+ * @param[in] session NETCONF session from which this function receives messages.
+ * @param[in] timeout Timeout for reading in milliseconds. Use negative value for infinite.
+ * @param[out] doc The XML document containing the parsed message
+ * @return NC_MSG_REPLY If a rpc-reply was received;
+ * @return NC_MSG_NOTIF If a notification was received;
+ * @return NC_MSG_ERROR If any error occurred;
+ * @return NC_MSG_WOULDBLOCK If the timeout was reached.
+ */
+static NC_MSG_TYPE
+recv_msg_no_schema(struct nc_session *session, int timeout, xmlDocPtr *doc)
+{
+    xmlNodePtr root = NULL;
+    NC_MSG_TYPE ret = NC_MSG_ERROR;
+    int r;
+
+    /* MSGS LOCK */
+    r = nc_session_client_msgs_lock(session, &timeout, __func__);
+    if (!r) {
+        ret = NC_MSG_WOULDBLOCK;
+        goto cleanup;
+    } else if (r == -1) {
+        ret = NC_MSG_ERROR;
+        goto cleanup;
+    }
+
+    /* Read a message from the wire */
+    r = nc_read_msg_poll_io_no_schema(session, timeout, doc);
+    if (!r) {
+        ret = NC_MSG_WOULDBLOCK;
+        goto cleanup_unlock;
+    } else if (r == -1) {
+        ret = NC_MSG_ERROR;
+        goto cleanup_unlock;
+    }
+
+    /* Get the root node of the parse XML message */
+    root = xmlDocGetRootElement(*doc);
+
+    /* Basic check to determine message type */
+    if ( root ) {
+        if ( !strcmp((const char *)root->name, "rpc-reply") ) {
+            ret = NC_MSG_REPLY;
+        }
+    }
+
+cleanup_unlock:
+    /* MSGS UNLOCK */
+    nc_session_client_msgs_unlock(session, __func__);
+
+cleanup:
+    return ret;
+}
+
 static NC_MSG_TYPE
 recv_reply(struct nc_session *session, int timeout, struct lyd_node *op, uint64_t msgid, struct lyd_node **envp)
 {
@@ -2148,6 +2223,41 @@ recv_reply(struct nc_session *session, int timeout, struct lyd_node *op, uint64_
 
 cleanup:
     ly_in_free(msg, 1);
+    return ret;
+}
+
+static NC_MSG_TYPE
+recv_reply_no_schema(struct nc_session *session, int timeout, uint64_t msgid, xmlDocPtr *doc)
+{
+    NC_MSG_TYPE ret = NC_MSG_ERROR;
+    xmlChar *msg_id = (xmlChar *) "message-id";
+    char *msg_id_str, *ptr;
+    uint64_t cur_msgid;
+
+    /* Receive messages until a rpc-reply is found or a timeout or error reached */
+    ret = recv_msg_no_schema(session, timeout, doc);
+    if (ret != NC_MSG_REPLY) {
+        goto cleanup;
+    }
+
+    /* Get the root node of the parse XML message */
+    xmlNodePtr root = xmlDocGetRootElement(*doc);
+
+    /* Retries the message-id property from the reply */
+    msg_id_str = (char *) xmlGetProp(root, msg_id);
+
+    /* If there was a message id property in the reply compare it */
+    if (msg_id_str) {
+        cur_msgid = strtoul(msg_id_str, &ptr, 10);
+
+        if (cur_msgid != msgid) {
+            ERR(session, "Received a <rpc-reply> with an unexpected message-id %" PRIu64 " (expected %" PRIu64 ").",
+                    cur_msgid, msgid);
+            return NC_MSG_REPLY_ERR_MSGID;
+        }
+    }
+
+cleanup:
     return ret;
 }
 
@@ -2286,6 +2396,7 @@ recv_reply_dup_rpc(struct nc_session *session, struct nc_rpc *rpc, struct lyd_no
         rpc_name = "resync-subscription";
         break;
     case NC_RPC_UNKNOWN:
+    case NC_RPC_NO_SCHEMA:
         lyrc = LY_EINT;
         break;
     }
@@ -2350,6 +2461,21 @@ nc_recv_reply(struct nc_session *session, struct nc_rpc *rpc, uint64_t msgid, in
         *op = NULL;
     }
     return ret;
+}
+
+API NC_MSG_TYPE
+nc_recv_reply_no_schema(struct nc_session *session, uint64_t msgid, int timeout, xmlDocPtr *doc)
+{
+    if (!session) {
+        ERRARG("session");
+        return NC_MSG_ERROR;
+    } else if ((session->status != NC_STATUS_RUNNING) || (session->side != NC_CLIENT)) {
+        ERR(session, "Invalid session to receive RPC replies.");
+        return NC_MSG_ERROR;
+    }
+
+    /* receive a reply with no schema */
+    return recv_reply_no_schema(session, timeout, msgid, doc);;
 }
 
 static NC_MSG_TYPE
@@ -2555,6 +2681,7 @@ nc_send_rpc(struct nc_session *session, struct nc_rpc *rpc, int timeout, uint64_
     struct nc_rpc_establishpush *rpc_estpush;
     struct nc_rpc_modifypush *rpc_modpush;
     struct nc_rpc_resyncsub *rpc_resyncsub;
+    struct nc_rpc_no_schema *rpc_no_schema;
     struct lyd_node *data = NULL, *node, *cont;
     const struct lys_module *mod = NULL, *mod2 = NULL, *ietfncwd;
     LY_ERR lyrc = 0;
@@ -2578,6 +2705,7 @@ nc_send_rpc(struct nc_session *session, struct nc_rpc *rpc, int timeout, uint64_
 
     switch (rpc->type) {
     case NC_RPC_ACT_GENERIC:
+    case NC_RPC_NO_SCHEMA:
         /* checked when parsing */
         break;
     case NC_RPC_GETCONFIG:
@@ -3123,6 +3251,12 @@ nc_send_rpc(struct nc_session *session, struct nc_rpc *rpc, int timeout, uint64_
         CHECK_LYRC_BREAK(lyd_new_term(data, mod, "id", str, 0, NULL));
         break;
 
+    case NC_RPC_NO_SCHEMA:
+        rpc_no_schema = (struct nc_rpc_no_schema *)rpc;
+
+        // Eventually might have to put somethign in here if strict IETF YANG mode parsing is needed
+        break;
+
     case NC_RPC_UNKNOWN:
         ERRINT;
         return NC_MSG_ERROR;
@@ -3136,13 +3270,21 @@ nc_send_rpc(struct nc_session *session, struct nc_rpc *rpc, int timeout, uint64_
         return NC_MSG_ERROR;
     }
 
-    /* send RPC, store its message ID */
-    r = nc_send_msg_io(session, timeout, data);
-    cur_msgid = session->opts.client.msgid;
+    /* If this is an RPC with a schema, send it */
+    if (data) {
+        /* send RPC, store its message ID */
+        r = nc_send_msg_io(session, timeout, data);
 
-    if (dofree) {
-        lyd_free_tree(data);
+        if (dofree) {
+            lyd_free_tree(data);
+        }
     }
+    /* Otherwise it's a schema-less RPC call */
+    else {
+        r = nc_send_msg_io_no_schema(session, timeout, rpc_no_schema->doc);
+    }
+
+    cur_msgid = session->opts.client.msgid;
 
     if (r == NC_MSG_RPC) {
         *msgid = cur_msgid;

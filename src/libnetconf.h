@@ -535,6 +535,10 @@
  * with ::nc_recv_notif_dispatch() that asynchronously (in a separate thread)
  * reads notifications and passes them to your callback.
  *
+ * If you wish to send an RPC which does not have an associated schema defined you can do so
+ * using ::nc_recv_reply_no_schema().  This will return the response in an XML formatted char
+ * string which is then parsed into a XML document.
+ * 
  * Functions List
  * --------------
  *
@@ -567,9 +571,13 @@
  * - ::nc_rpc_modifypush_periodic()
  * - ::nc_rpc_modifypush_onchange()
  * - ::nc_rpc_resyncsub()
+ * - ::nc_rpc_no_schema()
+ * - ::nc_rpc_no_schema_doc()
+ * - ::nc_rpc_no_schema_xml()
  *
  * - ::nc_send_rpc()
  * - ::nc_recv_reply()
+ * - ::nc_recv_reply_no_schema()
  * - ::nc_recv_notif()
  * - ::nc_recv_notif_dispatch()
  */

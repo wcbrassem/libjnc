@@ -847,63 +847,63 @@ auth_password_getspnam(const char *username, struct spwd *spwd_buf, char **buf, 
  * @return Hashed password of @p username.
  */
 static char *
-auth_password_get_pwd_hash(const char *username)
-{
-    struct passwd *pwd, pwd_buf;
-    struct spwd *spwd, spwd_buf;
-    char *pass_hash = NULL, *buf = NULL;
-    size_t buf_size = 256;
+// auth_password_get_pwd_hash(const char *username)
+// {
+//     struct passwd *pwd, pwd_buf;
+//     struct spwd *spwd, spwd_buf;
+//     char *pass_hash = NULL, *buf = NULL;
+//     size_t buf_size = 256;
 
-    buf = malloc(buf_size);
-    if (!buf) {
-        ERRMEM;
-        goto error;
-    }
+//     buf = malloc(buf_size);
+//     if (!buf) {
+//         ERRMEM;
+//         goto error;
+//     }
 
-    pwd = auth_password_getpwnam(username, &pwd_buf, &buf, &buf_size);
-    if (!pwd) {
-        VRB(NULL, "User \"%s\" not found locally.", username);
-        goto error;
-    }
+//     pwd = auth_password_getpwnam(username, &pwd_buf, &buf, &buf_size);
+//     if (!pwd) {
+//         VRB(NULL, "User \"%s\" not found locally.", username);
+//         goto error;
+//     }
 
-    if (!strcmp(pwd->pw_passwd, "x")) {
-        spwd = auth_password_getspnam(username, &spwd_buf, &buf, &buf_size);
-        if (!spwd) {
-            VRB(NULL, "Failed to retrieve the shadow entry for \"%s\".", username);
-            goto error;
-        } else if ((spwd->sp_expire > -1) && (spwd->sp_expire <= (time(NULL) / (60 * 60 * 24)))) {
-            WRN(NULL, "User \"%s\" account has expired.", username);
-            goto error;
-        }
+//     if (!strcmp(pwd->pw_passwd, "x")) {
+//         spwd = auth_password_getspnam(username, &spwd_buf, &buf, &buf_size);
+//         if (!spwd) {
+//             VRB(NULL, "Failed to retrieve the shadow entry for \"%s\".", username);
+//             goto error;
+//         } else if ((spwd->sp_expire > -1) && (spwd->sp_expire <= (time(NULL) / (60 * 60 * 24)))) {
+//             WRN(NULL, "User \"%s\" account has expired.", username);
+//             goto error;
+//         }
 
-        pass_hash = spwd->sp_pwdp;
-    } else {
-        pass_hash = pwd->pw_passwd;
-    }
+//         pass_hash = spwd->sp_pwdp;
+//     } else {
+//         pass_hash = pwd->pw_passwd;
+//     }
 
-    if (!pass_hash) {
-        ERR(NULL, "No password could be retrieved for \"%s\".", username);
-        goto error;
-    }
+//     if (!pass_hash) {
+//         ERR(NULL, "No password could be retrieved for \"%s\".", username);
+//         goto error;
+//     }
 
-    /* check the hash structure for special meaning */
-    if (!strcmp(pass_hash, "*") || !strcmp(pass_hash, "!")) {
-        VRB(NULL, "User \"%s\" is not allowed to authenticate using a password.", username);
-        goto error;
-    }
-    if (!strcmp(pass_hash, "*NP*")) {
-        VRB(NULL, "Retrieving password for \"%s\" from a NIS+ server not supported.", username);
-        goto error;
-    }
+//     /* check the hash structure for special meaning */
+//     if (!strcmp(pass_hash, "*") || !strcmp(pass_hash, "!")) {
+//         VRB(NULL, "User \"%s\" is not allowed to authenticate using a password.", username);
+//         goto error;
+//     }
+//     if (!strcmp(pass_hash, "*NP*")) {
+//         VRB(NULL, "Retrieving password for \"%s\" from a NIS+ server not supported.", username);
+//         goto error;
+//     }
 
-    pass_hash = strdup(pass_hash);
-    free(buf);
-    return pass_hash;
+//     pass_hash = strdup(pass_hash);
+//     free(buf);
+//     return pass_hash;
 
-error:
-    free(buf);
-    return NULL;
-}
+// error:
+//     free(buf);
+//     return NULL;
+// }
 
 #else
 
@@ -913,12 +913,12 @@ error:
  * @param[in] username Name of the user.
  * @return Hashed password of @p username.
  */
-static char *
-auth_password_get_pwd_hash(const char *username)
-{
-    (void)username;
-    return strdup("");
-}
+// static char *
+// auth_password_get_pwd_hash(const char *username)
+// {
+//     (void)username;
+//     return strdup("");
+// }
 
 #endif
 
@@ -930,69 +930,69 @@ auth_password_get_pwd_hash(const char *username)
  * @return 0 on match.
  * @return non-zero if not a match.
  */
-static int
-auth_password_compare_pwd(const char *pass_hash, const char *pass_clear)
-{
-    char *new_pass_hash;
+// static int
+// auth_password_compare_pwd(const char *pass_hash, const char *pass_clear)
+// {
+//     char *new_pass_hash;
 
-#ifdef HAVE_CRYPT_R
-    struct crypt_data cdata;
-#endif
+// #ifdef HAVE_CRYPT_R
+//     struct crypt_data cdata;
+// #endif
 
-    if (!pass_hash[0]) {
-        if (!pass_clear[0]) {
-            WRN(NULL, "User authentication successful with an empty password!");
-            return 0;
-        } else {
-            /* the user did now know he does not need any password,
-             * (which should not be used) so deny authentication */
-            return 1;
-        }
-    }
+//     if (!pass_hash[0]) {
+//         if (!pass_clear[0]) {
+//             WRN(NULL, "User authentication successful with an empty password!");
+//             return 0;
+//         } else {
+//             /* the user did now know he does not need any password,
+//              * (which should not be used) so deny authentication */
+//             return 1;
+//         }
+//     }
 
-#ifdef HAVE_CRYPT_R
-    cdata.initialized = 0;
-    new_pass_hash = crypt_r(pass_clear, pass_hash, &cdata);
-#else
-    pthread_mutex_lock(&crypt_lock);
-    new_pass_hash = crypt(pass_clear, pass_hash);
-    pthread_mutex_unlock(&crypt_lock);
-#endif
+// #ifdef HAVE_CRYPT_R
+//     cdata.initialized = 0;
+//     new_pass_hash = crypt_r(pass_clear, pass_hash, &cdata);
+// #else
+//     pthread_mutex_lock(&crypt_lock);
+//     new_pass_hash = crypt(pass_clear, pass_hash);
+//     pthread_mutex_unlock(&crypt_lock);
+// #endif
 
-    if (!new_pass_hash) {
-        return 1;
-    }
+//     if (!new_pass_hash) {
+//         return 1;
+//     }
 
-    return strcmp(new_pass_hash, pass_hash);
-}
+//     return strcmp(new_pass_hash, pass_hash);
+// }
 
-static void
-nc_sshcb_auth_password(struct nc_session *session, ssh_message msg)
-{
-    char *pass_hash;
-    int auth_ret = 1;
+// static void
+// nc_sshcb_auth_password(struct nc_session *session, ssh_message msg)
+// {
+//     char *pass_hash;
+//     int auth_ret = 1;
 
-    if (server_opts.passwd_auth_clb) {
-        auth_ret = server_opts.passwd_auth_clb(session, ssh_message_auth_password(msg), server_opts.passwd_auth_data);
-    } else {
-        pass_hash = auth_password_get_pwd_hash(session->username);
-        if (pass_hash) {
-            auth_ret = auth_password_compare_pwd(pass_hash, ssh_message_auth_password(msg));
-            free(pass_hash);
-        }
-    }
+//     if (server_opts.passwd_auth_clb) {
+//         auth_ret = server_opts.passwd_auth_clb(session, ssh_message_auth_password(msg), server_opts.passwd_auth_data);
+//     } else {
+//         pass_hash = auth_password_get_pwd_hash(session->username);
+//         if (pass_hash) {
+//             auth_ret = auth_password_compare_pwd(pass_hash, ssh_message_auth_password(msg));
+//             free(pass_hash);
+//         }
+//     }
 
-    if (!auth_ret) {
-        session->flags |= NC_SESSION_SSH_AUTHENTICATED;
-        VRB(session, "User \"%s\" authenticated.", session->username);
-        ssh_message_auth_reply_success(msg, 0);
-    } else {
-        ++session->opts.server.ssh_auth_attempts;
-        VRB(session, "Failed user \"%s\" authentication attempt (#%d).", session->username,
-                session->opts.server.ssh_auth_attempts);
-        ssh_message_reply_default(msg);
-    }
-}
+//     if (!auth_ret) {
+//         session->flags |= NC_SESSION_SSH_AUTHENTICATED;
+//         VRB(session, "User \"%s\" authenticated.", session->username);
+//         ssh_message_auth_reply_success(msg, 0);
+//     } else {
+//         ++session->opts.server.ssh_auth_attempts;
+//         VRB(session, "Failed user \"%s\" authentication attempt (#%d).", session->username,
+//                 session->opts.server.ssh_auth_attempts);
+//         ssh_message_reply_default(msg);
+//     }
+// }
 
 #ifdef HAVE_LIBPAM
 
@@ -1274,97 +1274,97 @@ nc_sshcb_auth_kbdint(struct nc_session *session, ssh_message msg)
  * @param[in] key Presented SSH key to compare.
  * @return Authorized key username, NULL if no match was found.
  */
-static const char *
-auth_pubkey_compare_key(ssh_key key)
-{
-    uint32_t i;
-    ssh_key pub_key;
-    const char *username = NULL;
-    int ret = 0;
+// static const char *
+// auth_pubkey_compare_key(ssh_key key)
+// {
+//     uint32_t i;
+//     ssh_key pub_key;
+//     const char *username = NULL;
+//     int ret = 0;
 
-    /* LOCK */
-    pthread_mutex_lock(&server_opts.authkey_lock);
+//     /* LOCK */
+//     pthread_mutex_lock(&server_opts.authkey_lock);
 
-    for (i = 0; i < server_opts.authkey_count; ++i) {
-        switch (server_opts.authkeys[i].type) {
-        case NC_SSH_KEY_UNKNOWN:
-            ret = ssh_pki_import_pubkey_file(server_opts.authkeys[i].path, &pub_key);
-            break;
-        case NC_SSH_KEY_DSA:
-            ret = ssh_pki_import_pubkey_base64(server_opts.authkeys[i].base64, SSH_KEYTYPE_DSS, &pub_key);
-            break;
-        case NC_SSH_KEY_RSA:
-            ret = ssh_pki_import_pubkey_base64(server_opts.authkeys[i].base64, SSH_KEYTYPE_RSA, &pub_key);
-            break;
-        case NC_SSH_KEY_ECDSA:
-            ret = ssh_pki_import_pubkey_base64(server_opts.authkeys[i].base64, SSH_KEYTYPE_ECDSA, &pub_key);
-            break;
-        }
+//     for (i = 0; i < server_opts.authkey_count; ++i) {
+//         switch (server_opts.authkeys[i].type) {
+//         case NC_SSH_KEY_UNKNOWN:
+//             ret = ssh_pki_import_pubkey_file(server_opts.authkeys[i].path, &pub_key);
+//             break;
+//         case NC_SSH_KEY_DSA:
+//             ret = ssh_pki_import_pubkey_base64(server_opts.authkeys[i].base64, SSH_KEYTYPE_DSS, &pub_key);
+//             break;
+//         case NC_SSH_KEY_RSA:
+//             ret = ssh_pki_import_pubkey_base64(server_opts.authkeys[i].base64, SSH_KEYTYPE_RSA, &pub_key);
+//             break;
+//         case NC_SSH_KEY_ECDSA:
+//             ret = ssh_pki_import_pubkey_base64(server_opts.authkeys[i].base64, SSH_KEYTYPE_ECDSA, &pub_key);
+//             break;
+//         }
 
-        if (ret == SSH_EOF) {
-            WRN(NULL, "Failed to import a public key of \"%s\" (File access problem).", server_opts.authkeys[i].username);
-            continue;
-        } else if (ret == SSH_ERROR) {
-            WRN(NULL, "Failed to import a public key of \"%s\" (SSH error).", server_opts.authkeys[i].username);
-            continue;
-        }
+//         if (ret == SSH_EOF) {
+//             WRN(NULL, "Failed to import a public key of \"%s\" (File access problem).", server_opts.authkeys[i].username);
+//             continue;
+//         } else if (ret == SSH_ERROR) {
+//             WRN(NULL, "Failed to import a public key of \"%s\" (SSH error).", server_opts.authkeys[i].username);
+//             continue;
+//         }
 
-        if (!ssh_key_cmp(key, pub_key, SSH_KEY_CMP_PUBLIC)) {
-            ssh_key_free(pub_key);
-            break;
-        }
+//         if (!ssh_key_cmp(key, pub_key, SSH_KEY_CMP_PUBLIC)) {
+//             ssh_key_free(pub_key);
+//             break;
+//         }
 
-        ssh_key_free(pub_key);
-    }
+//         ssh_key_free(pub_key);
+//     }
 
-    if (i < server_opts.authkey_count) {
-        username = server_opts.authkeys[i].username;
-    }
+//     if (i < server_opts.authkey_count) {
+//         username = server_opts.authkeys[i].username;
+//     }
 
-    /* UNLOCK */
-    pthread_mutex_unlock(&server_opts.authkey_lock);
+//     /* UNLOCK */
+//     pthread_mutex_unlock(&server_opts.authkey_lock);
 
-    return username;
-}
+//     return username;
+// }
 
-static void
-nc_sshcb_auth_pubkey(struct nc_session *session, ssh_message msg)
-{
-    const char *username;
-    int signature_state;
+// static void
+// nc_sshcb_auth_pubkey(struct nc_session *session, ssh_message msg)
+// {
+//     const char *username;
+//     int signature_state;
 
-    if (server_opts.pubkey_auth_clb) {
-        if (server_opts.pubkey_auth_clb(session, ssh_message_auth_pubkey(msg), server_opts.pubkey_auth_data)) {
-            goto fail;
-        }
-    } else {
-        if ((username = auth_pubkey_compare_key(ssh_message_auth_pubkey(msg))) == NULL) {
-            VRB(session, "User \"%s\" tried to use an unknown (unauthorized) public key.", session->username);
-            goto fail;
-        } else if (strcmp(session->username, username)) {
-            VRB(session, "User \"%s\" is not the username identified with the presented public key.", session->username);
-            goto fail;
-        }
-    }
+//     if (server_opts.pubkey_auth_clb) {
+//         if (server_opts.pubkey_auth_clb(session, ssh_message_auth_pubkey(msg), server_opts.pubkey_auth_data)) {
+//             goto fail;
+//         }
+//     } else {
+//         if ((username = auth_pubkey_compare_key(ssh_message_auth_pubkey(msg))) == NULL) {
+//             VRB(session, "User \"%s\" tried to use an unknown (unauthorized) public key.", session->username);
+//             goto fail;
+//         } else if (strcmp(session->username, username)) {
+//             VRB(session, "User \"%s\" is not the username identified with the presented public key.", session->username);
+//             goto fail;
+//         }
+//     }
 
-    signature_state = ssh_message_auth_publickey_state(msg);
-    if (signature_state == SSH_PUBLICKEY_STATE_VALID) {
-        VRB(session, "User \"%s\" authenticated.", session->username);
-        session->flags |= NC_SESSION_SSH_AUTHENTICATED;
-        ssh_message_auth_reply_success(msg, 0);
-    } else if (signature_state == SSH_PUBLICKEY_STATE_NONE) {
-        /* accepting only the use of a public key */
-        ssh_message_auth_reply_pk_ok_simple(msg);
-    }
+//     signature_state = ssh_message_auth_publickey_state(msg);
+//     if (signature_state == SSH_PUBLICKEY_STATE_VALID) {
+//         VRB(session, "User \"%s\" authenticated.", session->username);
+//         session->flags |= NC_SESSION_SSH_AUTHENTICATED;
+//         ssh_message_auth_reply_success(msg, 0);
+//     } else if (signature_state == SSH_PUBLICKEY_STATE_NONE) {
+//         /* accepting only the use of a public key */
+//         ssh_message_auth_reply_pk_ok_simple(msg);
+//     }
 
-    return;
+//     return;
 
-fail:
-    ++session->opts.server.ssh_auth_attempts;
-    VRB(session, "Failed user \"%s\" authentication attempt (#%d).", session->username,
-            session->opts.server.ssh_auth_attempts);
-    ssh_message_reply_default(msg);
-}
+// fail:
+//     ++session->opts.server.ssh_auth_attempts;
+//     VRB(session, "Failed user \"%s\" authentication attempt (#%d).", session->username,
+//             session->opts.server.ssh_auth_attempts);
+//     ssh_message_reply_default(msg);
+// }
 
 static int
 nc_sshcb_channel_open(struct nc_session *session, ssh_message msg)
@@ -1610,12 +1610,12 @@ nc_sshcb_msg(ssh_session UNUSED(sshsession), ssh_message msg, void *data)
         if (subtype == SSH_AUTH_METHOD_NONE) {
             /* libssh will return the supported auth methods */
             return 1;
-        } else if (subtype == SSH_AUTH_METHOD_PASSWORD) {
-            nc_sshcb_auth_password(session, msg);
-            return 0;
-        } else if (subtype == SSH_AUTH_METHOD_PUBLICKEY) {
-            nc_sshcb_auth_pubkey(session, msg);
-            return 0;
+        // } else if (subtype == SSH_AUTH_METHOD_PASSWORD) {
+        //     nc_sshcb_auth_password(session, msg);
+        //     return 0;
+        // } else if (subtype == SSH_AUTH_METHOD_PUBLICKEY) {
+        //     nc_sshcb_auth_pubkey(session, msg);
+        //     return 0;
         } else if (subtype == SSH_AUTH_METHOD_INTERACTIVE) {
             nc_sshcb_auth_kbdint(session, msg);
             return 0;

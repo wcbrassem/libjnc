@@ -260,6 +260,13 @@ struct nc_rpc_resyncsub {
     uint32_t id;
 };
 
+struct nc_rpc_no_schema {
+    NC_RPC_TYPE type;       /**< NC_RPC_NO_SCHEMA */
+    xmlDocPtr doc;          /**< XML document */
+    char *xml_str;          /**< raw XML string */
+    char free;
+};
+
 void nc_server_rpc_free(struct nc_server_rpc *rpc);
 
 void nc_client_err_clean(struct nc_err *err, struct ly_ctx *ctx);

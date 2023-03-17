@@ -24,16 +24,11 @@ set(${test}_mock_funcs connect ssh_connect ssh_userauth_none ssh_userauth_kbdint
     ssh_channel_poll_timeout ssh_userauth_password nc_handshake_io nc_ctx_check_and_fill
     ssh_userauth_try_publickey ssh_userauth_publickey nc_sock_listen_inet nc_sock_accept_binds nc_accept_callhome_ssh_sock)
 set(${test}_wrap_link_flags "-Wl")
-foreach(mock_func IN LISTS ${test}_mock_funcs)
-    set(${test}_wrap_link_flags "${${test}_wrap_link_flags},--wrap=${mock_func}")
-endforeach()
+
 
 set(test test_client_tls)
 set(${test}_mock_funcs connect SSL_connect nc_send_hello_io nc_handshake_io nc_ctx_check_and_fill)
 set(${test}_wrap_link_flags "-Wl")
-foreach(mock_func IN LISTS ${test}_mock_funcs)
-    set(${test}_wrap_link_flags "${${test}_wrap_link_flags},--wrap=${mock_func}")
-endforeach()
 
 #append tests depending on SSH/TLS
 if(ENABLE_SSH OR ENABLE_TLS)

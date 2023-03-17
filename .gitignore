@@ -1,1 +1,4 @@
 /pkg
+/build
+/doc/html
+/.vscode

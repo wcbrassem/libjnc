@@ -1014,6 +1014,172 @@ nc_rpc_resyncsub(uint32_t id)
     return (struct nc_rpc *)rpc;
 }
 
+API xmlNodePtr
+nc_get_rpc_node(const xmlDocPtr doc)
+{
+    xmlXPathContextPtr xpathCtx; 
+    xmlXPathObjectPtr xpathObj;
+    xmlNodeSetPtr nodes;
+    xmlChar *xpathExpr = (xmlChar *) "//rpc";
+
+    assert(doc);
+
+    xpathCtx = xmlXPathNewContext(doc);
+
+    if (xpathCtx == NULL) {
+        ERR(NULL, "Unable to create XPath context.");
+        return NULL;
+    }
+
+    xpathObj = xmlXPathEvalExpression(xpathExpr, xpathCtx);
+
+    if (xpathObj == NULL) {
+        ERR(NULL, "No RPC nodes found in XML input.");
+        return NULL;
+    }
+
+    /* There has to be one, and exactly one, RPC node in the document */
+    if ( (nodes = xpathObj->nodesetval) ) {
+        if (nodes->nodeNr != 1) {
+            ERR(NULL, "More than one RPC node found XML input.");
+            return NULL;
+        }
+    }
+
+    return nodes->nodeTab[0];
+}
+
+API xmlNodePtr
+nc_set_rpc_attr(xmlNodePtr node, const xmlChar *namespace, const xmlChar *msg_id)
+{
+    xmlChar *xmlProp = (xmlChar *) "message-id";
+
+    if (!node) {
+        ERRARG("node");
+        return NULL;
+    }
+
+    xmlNewNs(node, namespace, NULL);
+    xmlSetProp(node, xmlProp, msg_id);
+
+    return node;
+}
+
+API struct nc_rpc_no_schema *
+nc_rpc_new_doc(const xmlNodePtr np)
+{
+    struct nc_rpc_no_schema *rpc;
+    xmlChar *xmlVer = (xmlChar *) "1.0";
+
+    if (!np) {
+        ERRARG("np");
+        return NULL;
+    }
+
+    rpc = malloc(sizeof *rpc);
+    if (!rpc) {
+        ERRMEM;
+        return NULL;
+    }
+
+    rpc->type = NC_RPC_NO_SCHEMA;
+    rpc->xml_str = NULL;
+
+    rpc->doc = xmlNewDoc(xmlVer);
+    xmlDocSetRootElement(rpc->doc, np);
+    nc_set_rpc_attr(np, (xmlChar *) NC_NS_BASE, (xmlChar *) "1");
+
+    return rpc;
+}
+
+API struct nc_rpc_no_schema *
+nc_rpc_no_schema(const char *cmd_str,  NC_PARAMTYPE paramtype)
+{
+    struct nc_rpc_no_schema *rpc;
+    xmlNodePtr np;
+    xmlChar *xml_rpc = (xmlChar *) "rpc";
+    xmlChar *xml_cmd = (xmlChar *) cmd_str;
+
+    if (!cmd_str) {
+        ERRARG("cmd_str");
+        return NULL;
+    }
+
+    rpc = nc_rpc_new_doc( np = xmlNewNode(NULL, xml_rpc) );
+    np = xmlNewChild(np, NULL, xml_cmd, NULL);
+
+    if (paramtype == NC_PARAMTYPE_DUP_AND_FREE) {
+        rpc->xml_str = strdup( (const char *) cmd_str );
+    } else {
+        rpc->xml_str = (
+            char *) cmd_str;
+    }
+    rpc->free = (paramtype == NC_PARAMTYPE_CONST ? 0 : 1);
+
+    return rpc;
+}
+
+API struct nc_rpc_no_schema *
+nc_rpc_no_schema_doc(const xmlDocPtr doc)
+{
+    struct nc_rpc_no_schema *rpc;
+    xmlNodePtr np;
+
+    if (!doc) {
+        ERRARG("doc");
+        return NULL;
+    }
+
+    /*  Locate the RPC node */
+    if ( !(np = nc_get_rpc_node(doc)) ) {
+        return NULL;
+    }
+
+    rpc = nc_rpc_new_doc( xmlCopyNode(np, 1) );
+    rpc->free = 1;
+
+    return rpc;
+}
+
+API struct nc_rpc_no_schema *
+nc_rpc_no_schema_xml(const char *xml_str,  NC_PARAMTYPE paramtype)
+{
+    struct nc_rpc_no_schema *rpc = NULL;
+    xmlDocPtr xmlInput;
+    xmlNodePtr np;
+
+    if (!xml_str || *xml_str == '\0') {
+        ERRARG("xml_str");
+        return NULL;
+    }
+
+    xmlInput = xmlReadMemory(xml_str, strlen(xml_str), "rpc-xml-request.xml", NULL, 0);
+
+    if (xmlInput == NULL) {
+        ERR(NULL, "Unable to parse XML expression %s.", xml_str);
+        return NULL;
+    }
+
+    /* Locate the RPC node */
+    if ( !(np = nc_get_rpc_node(xmlInput)) ) {
+        goto cleanup;
+    }
+
+    rpc = nc_rpc_new_doc(np);
+
+    if (paramtype == NC_PARAMTYPE_DUP_AND_FREE) {
+        rpc->xml_str = strdup(xml_str);
+    } else {
+        rpc->xml_str = (char *)xml_str;
+    }
+    rpc->free = (paramtype == NC_PARAMTYPE_CONST ? 0 : 1);
+
+cleanup:
+    xmlFreeDoc(xmlInput);
+
+    return rpc;
+}
+
 API void
 nc_rpc_free(struct nc_rpc *rpc)
 {
@@ -1034,6 +1200,7 @@ nc_rpc_free(struct nc_rpc *rpc)
     struct nc_rpc_modifysub *rpc_modifysub;
     struct nc_rpc_establishpush *rpc_establishpush;
     struct nc_rpc_modifypush *rpc_modifypush;
+    struct nc_rpc_no_schema *rpc_no_schema;
     int i;
 
     if (!rpc) {
@@ -1182,6 +1349,13 @@ nc_rpc_free(struct nc_rpc *rpc)
             if (rpc_modifypush->periodic) {
                 free(rpc_modifypush->anchor_time);
             }
+        }
+        break;
+    case NC_RPC_NO_SCHEMA:
+        rpc_no_schema = (struct nc_rpc_no_schema *)rpc;
+        xmlFreeDoc(rpc_no_schema->doc);
+        if (rpc_no_schema->free) {
+            free(rpc_no_schema->xml_str);
         }
         break;
     case NC_RPC_UNKNOWN:

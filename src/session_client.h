@@ -116,6 +116,15 @@ void nc_client_init(void);
  */
 void nc_client_destroy(void);
 
+/**
+ * @brief Destroy all libssh and/or libssl/libcrypto dynamic memory and
+ * the client options, for both SSH and TLS, and closes the seesion
+ *
+ * 
+ * @param[in] session The session to close and release and resources.
+ */
+void nc_client_close(struct nc_session *session);
+
 /** @} Client */
 
 /**
@@ -341,6 +350,14 @@ int nc_client_ssh_set_username(const char *username);
 const char *nc_client_ssh_get_username(void);
 
 /**
+ * @brief Set client SSH password used for authentication.
+ *
+ * @param[in] password Password to use.
+ * @return 0 on success, -1 on error.
+ */
+int nc_client_ssh_set_password(const char *password);
+
+/**
  * @brief Connect to the NETCONF server using SSH transport (via libssh).
  *
  * SSH session is created with default options. If the caller needs to use specific SSH session properties,
@@ -540,6 +557,26 @@ int nc_session_ntf_thread_running(const struct nc_session *session);
  */
 NC_MSG_TYPE nc_recv_reply(struct nc_session *session, struct nc_rpc *rpc, uint64_t msgid, int timeout,
         struct lyd_node **envp, struct lyd_node **op);
+
+/**
+ * @brief Receive NETCONF RPC reply.
+ *
+ * @note This function can be called in a single thread only.
+ *
+ * @param[in] session NETCONF session from which the function gets data. It must be the
+ * client side session object.
+ * @param[in] msgid Expected message ID of the reply.
+ * @param[in] timeout Timeout for reading in milliseconds. Use negative value for infinite
+ * waiting and 0 for immediate return if data are not available on the wire.
+ * @param[out] doc The XML document to output.  Free the buffer is the responsibilty of the caller.
+ * and #NC_MSG_REPLY_ERR_MSGID return.
+ * @return #NC_MSG_REPLY for success,
+ *         #NC_MSG_WOULDBLOCK if @p timeout has elapsed,
+ *         #NC_MSG_ERROR if reading has failed,
+ *         #NC_MSG_NOTIF if a notification was read instead (call this function again to get the reply), and
+ *         #NC_MSG_REPLY_ERR_MSGID if a reply with missing or wrong message-id was received.
+ */
+NC_MSG_TYPE nc_recv_reply_no_schema(struct nc_session *session, uint64_t msgid, int timeout, xmlDocPtr *doc);
 
 /**
  * @brief Receive NETCONF Notification.

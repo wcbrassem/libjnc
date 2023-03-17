@@ -28,6 +28,7 @@
 #include <messages_server.h>
 #include <session_client.h>
 #include <session_server.h>
+#include <macosx_pthread.h>
 #include "tests/config.h"
 
 /* millisec */
@@ -39,10 +40,8 @@
 
 #define nc_assert(cond) if (!(cond)) { fprintf(stderr, "assert failed (%s:%d)\n", __FILE__, __LINE__); exit(1); }
 
-#if _POSIX_BARRIERS >= 200112L
 pthread_barrier_t barrier;
 pthread_barrier_t barrier_msg;
-#endif
 
 typedef struct arg {
     int in;

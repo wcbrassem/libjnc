@@ -48,6 +48,7 @@
 #include "libnetconf.h"
 #include "session_client.h"
 #include "session_client_ch.h"
+// #include "session_p.h"
 
 struct nc_client_context *nc_client_context_location(void);
 
@@ -167,8 +168,10 @@ _nc_client_ssh_destroy_opts(struct nc_client_ssh_opts *opts)
     }
     free(opts->keys);
     free(opts->username);
+    free(opts->password);
     opts->keys = NULL;
     opts->username = NULL;
+    opts->password = NULL;
 }
 
 void
@@ -1154,6 +1157,31 @@ nc_client_ssh_ch_del_bind(const char *address, uint16_t port)
     return nc_client_ch_del_bind(address, port, NC_TI_LIBSSH);
 }
 
+static int
+_nc_client_ssh_set_password(const char *password, struct nc_client_ssh_opts *opts)
+{
+    if (opts->password) {
+        free(opts->password);
+    }
+    if (password) {
+        opts->password = strdup(password);
+        if (!opts->password) {
+            ERRMEM;
+            return -1;
+        }
+    } else {
+        opts->password = NULL;
+    }
+
+    return 0;
+}
+
+API int
+nc_client_ssh_set_password(const char *password)
+{
+    return _nc_client_ssh_set_password(password, &ssh_opts);
+}
+
 /* Establish a secure SSH connection and authenticate.
  * Host, port, username, and a connected socket is expected to be set.
  *
@@ -1265,7 +1293,13 @@ connect_ssh_session(struct nc_session *session, struct nc_client_ssh_opts *opts,
             userauthlist &= ~SSH_AUTH_METHOD_PASSWORD;
 
             VRB(session, "Password authentication (host \"%s\", user \"%s\").", session->host, session->username);
-            s = opts->auth_password(session->username, session->host, opts->auth_password_priv);
+
+            /* If no password is included prompt for it, otherwise use the embedded one */
+            if ( !opts->password || strisempty( opts->password ) )
+                s = opts->auth_password(session->username, session->host, opts->auth_password_priv);
+            else
+                s = strdup(opts->password);
+
             if (s == NULL) {
                 ERR(session, "Unable to get the password.");
                 return -1;

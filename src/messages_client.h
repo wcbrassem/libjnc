@@ -23,6 +23,10 @@ extern "C" {
 
 #include <stdint.h>
 
+/* Include from libxml2 */
+#include <libxml/tree.h>
+#include <libxml/xpath.h>
+
 #include "netconf.h"
 
 /**
@@ -75,7 +79,10 @@ typedef enum {
     /* ietf-yang-push */
     NC_RPC_ESTABLISHPUSH,   /**< \<establish-subscription\> RPC with augments. */
     NC_RPC_MODIFYPUSH,      /**< \<modify-subscription\> RPC with augments. */
-    NC_RPC_RESYNCSUB        /**< \<resync-subscription\> RPC. */
+    NC_RPC_RESYNCSUB,        /**< \<resync-subscription\> RPC. */
+
+    /* RPC with no YANG schema */
+    NC_RPC_NO_SCHEMA     /**< RPC with no YANG model schema */
 } NC_RPC_TYPE;
 
 /**
@@ -539,6 +546,38 @@ struct nc_rpc *nc_rpc_modifypush_onchange(uint32_t id, const char *datastore, co
  * @return Created RPC object to send via a NETCONF session or NULL in case of (memory allocation) error.
  */
 struct nc_rpc *nc_rpc_resyncsub(uint32_t id);
+
+/**
+ * @brief Create a NETCONF RPC with no schema from a basic command string
+ *
+ * For details, see ::nc_rpc.
+ *
+ * @param[in] cmd_str NETCONF command without RPC XML format.
+ * @param[in] paramtype How to further manage data parameters.
+ * @return Created RPC object to send via a NETCONF session or NULL in case of (memory allocation) error.
+ */
+struct nc_rpc_no_schema *nc_rpc_no_schema(const char *cmd_str, NC_PARAMTYPE paramtype);
+
+/**
+ * @brief Create a NETCONF RPC with no schema from an XML document
+ *
+ * For details, see ::nc_rpc.
+ *
+ * @param[in] doc NETCONF RPC data as an XML document.
+ * @return Created RPC object to send via a NETCONF session or NULL in case of (memory allocation) error.
+ */
+struct nc_rpc_no_schema *nc_rpc_no_schema_doc(xmlDocPtr doc);
+
+/**
+ * @brief Create a NETCONF RPC with no schema from an XML string
+ *
+ * For details, see ::nc_rpc.
+ *
+ * @param[in] xml_str NETCONF RPC data as an XML string.
+ * @param[in] paramtype How to further manage data parameters.
+ * @return Created RPC object to send via a NETCONF session or NULL in case of (memory allocation) error.
+ */
+struct nc_rpc_no_schema *nc_rpc_no_schema_xml(const char *xml_str, NC_PARAMTYPE paramtype);
 
 /**
  * @brief Free the NETCONF RPC object.

@@ -38,6 +38,7 @@
 #include "libnetconf.h"
 #include "session_server.h"
 #include "session_server_ch.h"
+#include "macosx_pthread.h"
 
 struct nc_server_opts server_opts = {
 #ifdef NC_ENABLED_SSH
@@ -703,7 +704,7 @@ nc_server_init_ctx(const struct ly_ctx *ctx)
 API int
 nc_server_init(void)
 {
-    pthread_rwlockattr_t attr, *attr_p = NULL;
+    pthread_rwlockattr_t *attr_p = NULL;
     int r;
 
     nc_init();
@@ -712,6 +713,7 @@ nc_server_init(void)
     server_opts.new_client_id = 1;
 
 #ifdef HAVE_PTHREAD_RWLOCKATTR_SETKIND_NP
+    pthread_rwlockattr_t attr;
     if ((r = pthread_rwlockattr_init(&attr))) {
         ERR(NULL, "%s: failed init attribute (%s).", __func__, strerror(r));
         goto error;
@@ -1024,7 +1026,7 @@ nc_ps_lock(struct nc_pollsession *ps, uint8_t *id, const char *func)
     nc_gettimespec_real_add(&ts, NC_PS_LOCK_TIMEOUT);
 
     /* LOCK */
-    ret = pthread_mutex_timedlock(&ps->lock, &ts);
+    ret = macos_pthread_mutex_timedlock(&ps->lock, &ts);
     if (ret) {
         ERR(NULL, "%s: failed to lock a pollsession (%s).", func, strerror(ret));
         return -1;
@@ -1080,7 +1082,7 @@ nc_ps_unlock(struct nc_pollsession *ps, uint8_t id, const char *func)
     nc_gettimespec_real_add(&ts, NC_PS_LOCK_TIMEOUT);
 
     /* LOCK */
-    ret = pthread_mutex_timedlock(&ps->lock, &ts);
+    ret = macos_pthread_mutex_timedlock(&ps->lock, &ts);
     if (ret) {
         ERR(NULL, "%s: failed to lock a pollsession (%s).", func, strerror(ret));
         ret = -1;
@@ -1937,69 +1939,69 @@ nc_ps_clear(struct nc_pollsession *ps, int all, void (*data_free)(void *))
     nc_ps_unlock(ps, q_id, __func__);
 }
 
-static int
-nc_get_uid(int sock, uid_t *uid)
-{
-    int ret;
+// static int
+// nc_get_uid(int sock, uid_t *uid)
+// {
+//     int ret;
 
-#ifdef SO_PEERCRED
-    struct ucred ucred;
-    socklen_t len;
-    len = sizeof(ucred);
-    ret = getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &ucred, &len);
-    if (!ret) {
-        *uid = ucred.uid;
-    }
-#else
-    ret = getpeereid(sock, uid, NULL);
-#endif
+// #ifdef SO_PEERCRED
+//     struct ucred ucred;
+//     socklen_t len;
+//     len = sizeof(ucred);
+//     ret = getsockopt(sock, SOL_SOCKET, SO_PEERCRED, &ucred, &len);
+//     if (!ret) {
+//         *uid = ucred.uid;
+//     }
+// #else
+//     ret = getpeereid(sock, uid, NULL);
+// #endif
 
-    if (ret < 0) {
-        ERR(NULL, "Failed to get credentials from unix socket (%s).", strerror(errno));
-        return -1;
-    }
-    return 0;
-}
+//     if (ret < 0) {
+//         ERR(NULL, "Failed to get credentials from unix socket (%s).", strerror(errno));
+//         return -1;
+//     }
+//     return 0;
+// }
 
-static int
-nc_accept_unix(struct nc_session *session, int sock)
-{
-#if defined (SO_PEERCRED) || defined (HAVE_GETPEEREID)
-    struct passwd *pw, pw_buf;
-    char *username;
-    session->ti_type = NC_TI_UNIX;
-    uid_t uid = 0;
-    char *buf = NULL;
-    size_t buf_len = 0;
+// static int
+// nc_accept_unix(struct nc_session *session, int sock)
+// {
+// #if defined (SO_PEERCRED) || defined (HAVE_GETPEEREID)
+//     struct passwd *pw, pw_buf;
+//     char *username;
+//     session->ti_type = NC_TI_UNIX;
+//     uid_t uid = 0;
+//     char *buf = NULL;
+//     size_t buf_len = 0;
 
-    if (nc_get_uid(sock, &uid)) {
-        close(sock);
-        return -1;
-    }
+//     if (nc_get_uid(sock, &uid)) {
+//         close(sock);
+//         return -1;
+//     }
 
-    pw = nc_getpwuid(uid, &pw_buf, &buf, &buf_len);
-    if (pw == NULL) {
-        ERR(NULL, "Failed to find username for uid=%u (%s).\n", uid, strerror(errno));
-        close(sock);
-        return -1;
-    }
+//     pw = nc_getpwuid(uid, &pw_buf, &buf, &buf_len);
+//     if (pw == NULL) {
+//         ERR(NULL, "Failed to find username for uid=%u (%s).\n", uid, strerror(errno));
+//         close(sock);
+//         return -1;
+//     }
 
-    username = strdup(pw->pw_name);
-    free(buf);
-    if (username == NULL) {
-        ERRMEM;
-        close(sock);
-        return -1;
-    }
-    session->username = username;
+//     username = strdup(pw->pw_name);
+//     free(buf);
+//     if (username == NULL) {
+//         ERRMEM;
+//         close(sock);
+//         return -1;
+//     }
+//     session->username = username;
 
-    session->ti.unixsock.sock = sock;
+//     session->ti.unixsock.sock = sock;
 
-    return 1;
-#else
-    return -1;
-#endif
-}
+//     return 1;
+// #else
+//     return -1;
+// #endif
+// }
 
 API int
 nc_server_add_endpt(const char *name, NC_TRANSPORT_IMPL ti)
@@ -2556,15 +2558,15 @@ nc_accept(int timeout, const struct ly_ctx *ctx, struct nc_session **session)
             msgtype = NC_MSG_WOULDBLOCK;
             goto cleanup;
         }
-    } else
+    // } else
 #endif
-    if (server_opts.endpts[bind_idx].ti == NC_TI_UNIX) {
-        (*session)->data = server_opts.endpts[bind_idx].opts.unixsock;
-        ret = nc_accept_unix(*session, sock);
-        if (ret < 0) {
-            msgtype = NC_MSG_ERROR;
-            goto cleanup;
-        }
+    // if (server_opts.endpts[bind_idx].ti == NC_TI_UNIX) {
+    //     (*session)->data = server_opts.endpts[bind_idx].opts.unixsock;
+    //     ret = nc_accept_unix(*session, sock);
+    //     if (ret < 0) {
+    //         msgtype = NC_MSG_ERROR;
+    //         goto cleanup;
+    //     }
     } else {
         ERRINT;
         close(sock);

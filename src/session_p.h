@@ -70,6 +70,7 @@ struct nc_client_ssh_opts {
     void *auth_privkey_passphrase_priv;
 
     char *username;
+    char *password;
 };
 
 /* ACCESS locked, separate locks */
@@ -539,6 +540,8 @@ struct passwd *nc_getpwuid(uid_t uid, struct passwd *pwd_buf, char **buf, size_t
 
 NC_MSG_TYPE nc_send_msg_io(struct nc_session *session, int io_timeout, struct lyd_node *op);
 
+NC_MSG_TYPE nc_send_msg_io_no_schema(struct nc_session *session, int io_timeout, xmlDocPtr doc);
+
 /**
  * @brief Get the current real time if available and optionally add some time to it.
  *
@@ -864,6 +867,23 @@ void _nc_client_tls_destroy_opts(struct nc_client_tls_opts *opts);
 int nc_read_msg_poll_io(struct nc_session *session, int io_timeout, struct ly_in **msg);
 
 /**
+ * @brief Read message from the wire.
+ *
+ * Accepts hello, rpc, rpc-reply and notification. Received string is transformed into
+ * libyang XML tree and the message type is detected from the top level element.
+ *
+ * @param[in] session NETCONF session from which the message is being read.
+ * @param[in] io_timeout Timeout in milliseconds. Negative value means infinite timeout,
+ *            zero value causes to return immediately.
+ * @param[out] doc The XML document into which to parse the message.
+ * @return 1 on success.
+ * @return 0 on timeout.
+ * @return -1 on error.
+ * @return -2 on malformed message error.
+ */
+int nc_read_msg_poll_io_no_schema(struct nc_session *session, int io_timeout, xmlDocPtr *doc);
+
+/**
  * @brief Read a message from the wire.
  *
  * @param[in] session NETCONF session from which the message is being read.
@@ -878,6 +898,22 @@ int nc_read_msg_poll_io(struct nc_session *session, int io_timeout, struct ly_in
  * @return -2 on malformed message error.
  */
 int nc_read_msg_io(struct nc_session *session, int io_timeout, struct ly_in **msg, int passing_io_lock);
+
+/**
+ * @brief Read a message from the wire.
+ *
+ * @param[in] session NETCONF session from which the message is being read.
+ * @param[in] io_timeout Timeout in milliseconds. Negative value means infinite timeout,
+ *            zero value causes to return immediately.
+ * @param[out] doc XML document pointer to read the message into
+ * @param[in] passing_io_lock True if @p session IO lock is already held. This function always unlocks
+ *            it before returning!
+ * @return 1 on success.
+ * @return 0 on timeout.
+ * @return -1 on error.
+ * @return -2 on malformed message error.
+ */
+int nc_read_msg_io_no_schema(struct nc_session *session, int io_timeout, xmlDocPtr *doc, int passing_io_lock);
 
 /**
  * @brief Write message into wire.
@@ -904,6 +940,20 @@ int nc_read_msg_io(struct nc_session *session, int io_timeout, struct ly_in **ms
  * returned on error and #NC_MSG_NONE is never returned by this function.
  */
 NC_MSG_TYPE nc_write_msg_io(struct nc_session *session, int io_timeout, int type, ...);
+
+/**
+ * @brief Write message into wire.
+ *
+ * @param[in] session NETCONF session to which the message will be written.
+ * @param[in] io_timeout Timeout in milliseconds. Negative value means infinite timeout,
+ *            zero value causes to return immediately.
+ * @param[in] doc The xml document containing the RPC in a schema-less format
+
+ * @return Type of the written message. #NC_MSG_WOULDBLOCK is returned if timeout is positive
+ * (or zero) value and IO lock could not be acquired in that time. #NC_MSG_ERROR is
+ * returned on error and #NC_MSG_NONE is never returned by this function.
+ */
+NC_MSG_TYPE nc_write_msg_io_no_schema(struct nc_session *session, int io_timeout, xmlDocPtr doc);
 
 /**
  * @brief Check whether a session is still connected (on transport layer).
