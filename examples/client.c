@@ -66,6 +66,7 @@ help_print()
             "    -t, --tcp           SSH server port number, defaults to 830.\n"
             "    -u, --user          Username for connecting to server.\n"
             "    -p, --pass          Password for connecting to server.\n"
+            "    -f, --filter        XPath filter to apply to RPC reply.\n"
             "    -o, --output        Filename to write XML RPC reply.\n"
             "    -i, --input         Filename to read XML RPC request (must be last argument if used).\n\n"
             "    Available RPCs:\n"
@@ -202,20 +203,211 @@ send_rpc_no_schema(struct nc_session *session,  RPC_FORMAT in_format,  const cha
     xmlChar *buf;
     int size;
     xmlDocDumpFormatMemory(doc, &buf, &size, 1);
-    xmlSaveFormatFile(out, doc, 1);
+    xmlSaveFormatFile(out, doc, 0);
+    xmlFree(buf);
 
 cleanup:
     nc_rpc_free((struct nc_rpc *) rpc);
     return rc;
 }
 
+static inline unsigned char *c2uc(char *s) { return (unsigned char*)s; }
+static inline char *uc2c(unsigned char *s) { return (char*)s; }
+
+static inline xmlChar *c2xmlc(char *s) { return (unsigned char*)s; }
+static inline char *xmlc2c(xmlChar *s) { return (char*)s; }
+
+#include <libxml/xpath.h>
+#include <libxml/xpathInternals.h>
+
+#if defined(LIBXML_XPATH_ENABLED) && defined(LIBXML_SAX1_ENABLED)
+
+/**
+ * register_namespaces:
+ * @xpathCtx:		the pointer to an XPath context.
+ * @nsList:		the list of known namespaces in 
+ *			"<prefix1>=<href1> <prefix2>=href2> ..." format.
+ *
+ * Registers namespaces from @nsList in @xpathCtx.
+ *
+ * Returns 0 on success and a negative value otherwise.
+ */
+int 
+register_namespaces(xmlXPathContextPtr xpathCtx, const xmlChar* nsList) {
+    xmlChar* nsListDup;
+    xmlChar* prefix;
+    xmlChar* href;
+    xmlChar* next;
+    
+    // assert(xpathCtx);
+    // assert(nsList);
+
+    nsListDup = xmlStrdup(nsList);
+    if(nsListDup == NULL) {
+	fprintf(stderr, "Error: unable to strdup namespaces list\n");
+	return(-1);	
+    }
+    
+    next = nsListDup; 
+    while(next != NULL) {
+	/* skip spaces */
+	while((*next) == ' ') next++;
+	if((*next) == '\0') break;
+
+	/* find prefix */
+	prefix = next;
+	next = (xmlChar*)xmlStrchr(next, '=');
+	if(next == NULL) {
+	    fprintf(stderr,"Error: invalid namespaces list format\n");
+	    xmlFree(nsListDup);
+	    return(-1);	
+	}
+	*(next++) = '\0';	
+	
+	/* find href */
+	href = next;
+	next = (xmlChar*)xmlStrchr(next, ' ');
+	if(next != NULL) {
+	    *(next++) = '\0';	
+	}
+
+	/* do register namespace */
+	if(xmlXPathRegisterNs(xpathCtx, prefix, href) != 0) {
+	    fprintf(stderr,"Error: unable to register NS with prefix=\"%s\" and href=\"%s\"\n", prefix, href);
+	    xmlFree(nsListDup);
+	    return(-1);	
+	}
+    }
+    
+    xmlFree(nsListDup);
+    return(0);
+}
+
+/**
+ * print_xpath_nodes:
+ * @nodes:		the nodes set.
+ * @output:		the output file handle.
+ *
+ * Prints the @nodes content to @output.
+ */
+void
+print_xpath_nodes(xmlNodeSetPtr nodes, FILE* output) {
+    xmlNodePtr cur;
+    int size;
+    int i;
+    
+    // assert(output);
+    size = (nodes) ? nodes->nodeNr : 0;
+    
+    fprintf(output, "Result (%d nodes):\n", size);
+    for(i = 0; i < size; ++i) {
+	// assert(nodes->nodeTab[i]);
+	
+	if(nodes->nodeTab[i]->type == XML_NAMESPACE_DECL) {
+	    xmlNsPtr ns;
+	    
+	    ns = (xmlNsPtr)nodes->nodeTab[i];
+	    cur = (xmlNodePtr)ns->next;
+	    if(cur->ns) { 
+	        fprintf(output, "= namespace \"%s\"=\"%s\" for node %s:%s\n", 
+		    ns->prefix, ns->href, cur->ns->href, cur->name);
+	    } else {
+	        fprintf(output, "= namespace \"%s\"=\"%s\" for node %s\n", 
+		    ns->prefix, ns->href, cur->name);
+	    }
+	} else if(nodes->nodeTab[i]->type == XML_ELEMENT_NODE) {
+	    cur = nodes->nodeTab[i];   	    
+	    if(cur->ns) { 
+    	        fprintf(output, "= element node \"%s:%s\"\n", 
+		    cur->ns->href, cur->name);
+	    } else {
+    	        fprintf(output, "= element node \"%s\"\n", 
+		    cur->name);
+	    }
+	} else {
+	    cur = nodes->nodeTab[i];    
+	    fprintf(output, "= node \"%s\": type %d\n", cur->name, cur->type);
+	}
+    }
+}
+
+int testxml(const char *filename,const xmlChar* xpathExpr, const xmlChar* nsList)
+{
+    // char *filename = "/Users/wbrassem/Documents/Code/libjnc/examples/system-users.xml";
+    xmlDocPtr doc;
+    xmlXPathContextPtr xpathCtx; 
+    xmlXPathObjectPtr xpathObj; 
+
+    /* Load XML document */
+    doc = xmlParseFile(filename);
+    if (doc == NULL) {
+        fprintf(stderr, "Error: unable to parse file \"%s\"\n", filename);
+        return(-1);
+    }
+
+    /* Create xpath evaluation context */
+    xpathCtx = xmlXPathNewContext(doc);
+    if(xpathCtx == NULL) {
+        fprintf(stderr,"Error: unable to create new XPath context\n");
+        xmlFreeDoc(doc); 
+        return(-1);
+    }
+    
+    /* Register namespaces from list (if any) */
+    if((nsList != NULL) && (register_namespaces(xpathCtx, nsList) < 0)) {
+        fprintf(stderr,"Error: failed to register namespaces list \"%s\"\n", nsList);
+        xmlXPathFreeContext(xpathCtx); 
+        xmlFreeDoc(doc); 
+        return(-1);
+    }
+
+    /* Evaluate xpath expression */
+    xpathObj = xmlXPathEvalExpression(xpathExpr, xpathCtx);
+    if(xpathObj == NULL) {
+        fprintf(stderr,"Error: unable to evaluate xpath expression \"%s\"\n", xpathExpr);
+        xmlXPathFreeContext(xpathCtx); 
+        xmlFreeDoc(doc); 
+        return(-1);
+    }
+
+    /* Print results */
+    print_xpath_nodes(xpathObj->nodesetval, stdout);
+
+    /* Cleanup */
+    xmlXPathFreeObject(xpathObj);
+    xmlXPathFreeContext(xpathCtx); 
+    xmlFreeDoc(doc); 
+
+    return 0;
+}
+
+#endif
+
 int
 main(int argc, char **argv)
 {
+    // testxml("/Users/wbrassem/Documents/Code/libjnc/examples/system-users.xml",
+    //             c2xmlc("//nc:rpc-reply"),
+    //             c2xmlc("nc=urn:ietf:params:xml:ns:netconf:base:1.0"));
+ 
+    // testxml("/Users/wbrassem/Documents/Code/libjnc/examples/system-users.xml",
+    //             c2xmlc("//active-user-count[@junos:format]"),
+    //             // c2xmlc("nc=urn:ietf:params:xml:ns:netconf:base:1.0"));
+    //             c2xmlc("junos=http://xml.juniper.net/junos/22.2R0/junos"));
+
+    // testxml("/Users/wbrassem/Documents/Code/libjnc/examples/get-l2ckt-connection-information.xml",
+    //             c2xmlc("//jns:l2circuit-neighbor"),
+    //             c2xmlc("nc=urn:ietf:params:xml:ns:netconf:base:1.0 jns=http://xml.juniper.net/junos/22.2R0/junos-routing"));
+
+    testxml("/Users/wbrassem/Documents/Code/libjnc/examples/running-configuration.xml",
+                c2xmlc("//*[local-name()='groups']"),
+                // c2xmlc("//*[local-name()='label-switched-path']"),
+                c2xmlc(NULL));
+
     int rc = 0, opt;
     struct nc_session *session = NULL;
     const char *ssh_server = NULL, *ssh_server_port_str = NULL;
-    const char *xml_epxression = NULL;
+    const char *xpath_filter = NULL;
     const char *in = NULL, *out = NULL;
     const char *rpc_parameter_1 = NULL, *rpc_parameter_2 = NULL;
     long ssh_server_port = SSH_PORT;
@@ -229,6 +421,7 @@ main(int argc, char **argv)
         {"tcp",     required_argument,  NULL, 't'},
         {"user",    required_argument,  NULL, 'u'},
         {"pass",    required_argument,  NULL, 'p'},
+        {"filter",  required_argument,  NULL, 'f'},
         {"out",     required_argument,  NULL, 'o'},
         {"in",      no_argument,        NULL, 'i'},
         {NULL,      0,                  NULL,  0}
@@ -254,7 +447,7 @@ main(int argc, char **argv)
 
     opterr = 0;
 
-    while ((opt = getopt_long(argc, argv, "hdxs:t:u:p:o:i", options, NULL)) != -1) {
+    while ((opt = getopt_long(argc, argv, "hdxs:t:u:p:f:o:i", options, NULL)) != -1) {
         switch (opt) {
         case 'h':
             help_print();
@@ -292,6 +485,10 @@ main(int argc, char **argv)
             }
             break;
 
+        case 'f':
+            xpath_filter = optarg;
+            break;
+
         case 'i':
             in_format = FILE_NAME;
             break;
@@ -319,37 +516,37 @@ main(int argc, char **argv)
 
     /* sending a get RPC */
 
-    if (!strcmp(argv[optind], "get")) {
-        if (optind + 1 < argc) {
-            /* use the specified XPath filter */
-            rpc_parameter_1 = argv[optind + 1];
-        }
-        if (send_rpc(session, NC_RPC_GET, rpc_parameter_1, rpc_parameter_2)) {
-            rc = 1;
-            goto cleanup;
-        }
-        /* sending a get-config RPC */
-    } else if (!strcmp(argv[optind], "get-config")) {
-        /* use the specified datastore and optional XPath filter */
-        if (optind + 2 < argc) {
-            rpc_parameter_1 = argv[optind + 1];
-            rpc_parameter_2 = argv[optind + 2];
-        } else if (optind + 1 < argc) {
-            rpc_parameter_1 = argv[optind + 1];
-        }
-        if (send_rpc(session, NC_RPC_GETCONFIG, rpc_parameter_1, rpc_parameter_2)) {
-            rc = 1;
-            goto cleanup;
-        }
+    // if (!strcmp(argv[optind], "get")) {
+    //     if (optind + 1 < argc) {
+    //         /* use the specified XPath filter */
+    //         rpc_parameter_1 = argv[optind + 1];
+    //     }
+    //     if (send_rpc(session, NC_RPC_GET, rpc_parameter_1, rpc_parameter_2)) {
+    //         rc = 1;
+    //         goto cleanup;
+    //     }
+    //     /* sending a get-config RPC */
+    // } else if (!strcmp(argv[optind], "get-config")) {
+    //     /* use the specified datastore and optional XPath filter */
+    //     if (optind + 2 < argc) {
+    //         rpc_parameter_1 = argv[optind + 1];
+    //         rpc_parameter_2 = argv[optind + 2];
+    //     } else if (optind + 1 < argc) {
+    //         rpc_parameter_1 = argv[optind + 1];
+    //     }
+    //     if (send_rpc(session, NC_RPC_GETCONFIG, rpc_parameter_1, rpc_parameter_2)) {
+    //         rc = 1;
+    //         goto cleanup;
+    //     }
 
-    } else {
+    // } else {
         in = argv[optind];
 
         if (send_rpc_no_schema(session, in_format, in, out_format, out)) {
             rc = 1;
             goto cleanup;
         }
-    }
+    // }
 
 cleanup:
     nc_client_close(session);

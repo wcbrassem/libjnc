@@ -1,0 +1,47 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "client",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceFolder}/build/examples/client",
+            // "args": ["-d","-s","10.161.34.177","-u","jnpr","-p","pass123","get-system-users-information"],
+            // "args": ["-d","-s","10.161.34.177","-u","jnpr","-p","pass123","get-amt-summary"],
+
+            // Syntax and/or semantic errors in XML string
+            // "args": ["-s","10.161.34.177","-t","22","-u","jnpr","-x","-p","pass123","<deep><deeper><rpc><get-amt-summary/></rpc><deeper/><deep/>"],
+            // "args": ["-s","10.161.34.177","-t","22","-u","jnpr","-x","-p","pass123","<double><rpc><get-amt-summary/></rpc><rpc><get-amt-summary/></rpc></double>"],
+            // "args": ["-s","10.161.34.177","-t","22","-u","jnpr","-x","-p","pass123","<deep><double><rpc><get-amt-summary/></rpc><rpc><get-amt-summary/></rpc></double></deep>"],
+            // "args": ["-s","10.161.34.177","-t","22","-u","jnpr","-x","-p","pass123","<deep><deeper><get-amt-summary/></deeper>/<deep>"],
+
+            // "args": ["-s","10.161.34.177","-t","22","-u","jnpr","-x","-p","pass123","<deep><deeper><rpc><get-amt-summary/></rpc></deeper></deep>"],
+            // "args": ["-s","10.161.34.177","-u","jnpr","-p","pass123","-i","display-xml-rpc-2.xml"],
+            // "args": ["-s","10.161.34.177","-u","jnpr","-p","pass123","get-amt-summary"],
+            // "args": ["-d","-s","10.161.34.177","-u","jnpr","-p","pass123","get-config"],
+            "args": ["-d","-s","10.161.34.177","-u","jnpr","-p","pass123","-o","running-configuration.xml","-i","get-config-rpc.xml"],
+            // "args": ["-s","10.161.34.177","-t","22","-u","jnpr","-x","-p","pass123","<rpc><get-amt-summary/></rpc>"],
+            // "args": ["-s","10.161.34.177","-t","22","-u","jnpr","-o","amt-summ.xml","-p","pass123","get-amt-summary"],
+//            "args": ["-s","10.161.34.177","-t","22","-u","jnpr","-o","system-users.xml","-p","pass123","-f","//jnpr","get-system-users-information"],
+            // "args": ["-s","10.161.34.177","-t","22","-u","jnpr","-o","subscribers.xml","-p","pass123","-f","/subscribers-information/subscriber[user-name=''ONU-B14@svpoc.com'']","get-subscribers"],
+            // "args": ["-s","10.161.34.177","-t","22","-u","jnpr","-o","get-l2ckt-connection-information.xml","-p","pass123","-f","/subscribers-information/subscriber[user-name=''ONU-B14@svpoc.com'']","get-l2ckt-connection-information"],
+
+            // "args": ["-s", "/Users/wbrassem/Documents/Code/libnetconf2/build/examples/example_socket","get"],
+            "stopAtEntry": false,
+            "cwd": "${fileDirname}",
+            "environment": [],
+            "externalConsole": true,
+            "MIMode": "lldb",
+        },
+        {
+            "name": "C Launch",
+            "request": "launch",
+            "program": "${workspaceFolder}/{fileBasenameNoExtension}",
+            "args": ["-u", "/Users/wbrassem/Documents/Code/libnetconf2/build/examples/example_socket"],
+            "cwd": "${workspaceFolder}",
+       },
+    ]
+}

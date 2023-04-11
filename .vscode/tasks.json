@@ -1,0 +1,11 @@
+{
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "library make",
+            "command": "cd ${workspaceFolder}/build; make",
+            "detail": "Make the library and client.",
+            "problemMatcher": []
+        }
+    ],
+}

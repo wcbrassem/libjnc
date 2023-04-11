@@ -569,7 +569,8 @@ nc_read_msg_io_no_schema(struct nc_session *session, int io_timeout, xmlDocPtr *
     xmlIndentTreeOutput = 1;
     xmlKeepBlanksDefault(0);
 
-    *doc = xmlReadMemory(data, strlen(data), "rpc-reply.xml", NULL, 0);
+    *doc = xmlReadMemory(data, strlen(data), "rpc-reply.xml", NULL, XML_PARSE_NOBLANKS & XML_PARSE_NSCLEAN);
+    // *doc = xmlReadMemory(data, strlen(data), "rpc-reply.xml", NULL, 0);
     if (*doc == NULL) {
         ERR(session, "Failed to parse document.");
     }

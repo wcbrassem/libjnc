@@ -2008,8 +2008,8 @@ get_msg_type(struct nc_session *session, struct ly_in *msg)
                 str = strstr(str, end);
             } else if (!strncmp(str, "rpc-reply", 9)) {
                 return NC_MSG_REPLY;
-            } else if (!strncmp(str, "nc:rpc-reply", 12)) {
-                return NC_MSG_REPLY;
+            // } else if (!strncmp(str, "nc:rpc-reply", 12)) {
+            //     return NC_MSG_REPLY;
             } else if (!strncmp(str, "notification", 12)) {
                 return NC_MSG_NOTIF;
             } else {
